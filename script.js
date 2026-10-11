@@ -5,6 +5,7 @@
   const $ = id => document.getElementById(id);
   const video=$('video'), handCanvas=$('handCanvas'), handCtx=handCanvas.getContext('2d');
   const poseCanvas=$('poseCanvas'), poseCtx=poseCanvas?.getContext('2d');
+  const processCanvas=document.createElement('canvas'), processCtx=processCanvas.getContext('2d');
   const cameraStage=$('cameraStage'), placeholder=$('cameraPlaceholder'), status=$('cameraStatus');
   const liveBadge=$('liveBadge'), trackingBadge=$('trackingBadge'), guide=$('positionGuide');
   const startBtn=$('startCameraBtn'), stopBtn=$('stopCameraBtn'), switchBtn=$('switchCameraBtn');
@@ -105,7 +106,7 @@
     if(!vector){sequence=[];recentMotion=[];previousFeatures=null;predictionLabel='';predictionStreak=0;segmentActive=false;segmentCommitted=false;lastSentenceLabel='';showNoSign('Walang nakikitang katawan sa tracking area.');return}
     const now=performance.now(),energy=measureMotion(vector);recentMotion.push({t:now,energy});recentMotion=recentMotion.filter(x=>now-x.t<1800);
     if(energy>=.0055){lastMotionAt=now;if(!segmentActive){segmentActive=true;segmentCommitted=false}stopSpeech()}
-    if(segmentActive&&!segmentCommitted&&now-lastMotionAt>1800){segmentActive=false;predictionLabel='';predictionStreak=0;if(sentence.length)scheduleSpeech();showNoSign('Tapos na ang senyas.')}
+    if(segmentActive&&now-lastMotionAt>1800){const hadPrediction=segmentCommitted;segmentActive=false;segmentCommitted=false;predictionLabel='';predictionStreak=0;if(hadPrediction&&sentence.length)scheduleSpeech();showNoSign('Tapos na ang senyas.')}
     previousFeatures=vector;
     if(now-lastProcessedAtForSequence>=100){sequence.push(vector);if(sequence.length>SEQUENCE_LENGTH)sequence.shift();lastProcessedAtForSequence=now;void infer()}
     if(!modelReady)showNoSign('Landmark tracking active. Kailangan pa ang trained temporal model.');
@@ -117,7 +118,7 @@
     if(typeof holistic.initialize==='function')await holistic.initialize();await loadModel()
   }
   async function openCamera(){const ideal={width:{ideal:3840},height:{ideal:2160},frameRate:{ideal:30,max:60}};
-    try{return await navigator.mediaDevices.getUserMedia({video:{...ideal,facingMode:{exact:'environment'}},audio:false})}
+    try{return await navigator.mediaDevices.getUserMedia({video:{...ideal,facingMode:{exact:facingMode}},audio:false})}
     catch(error){if(['OverconstrainedError','NotFoundError','TypeError'].includes(error?.name)){try{return await navigator.mediaDevices.getUserMedia({video:ideal,audio:false})}catch{return await navigator.mediaDevices.getUserMedia({video:true,audio:false})}}throw error}
   }
   function cameraError(e){if(!window.isSecureContext)return 'Camera access requires HTTPS or localhost.';if(e?.name==='NotAllowedError')return 'Pinayagan ang camera access? Payagan ang camera sa browser settings.';if(e?.name==='NotFoundError'||e?.name==='OverconstrainedError')return 'Walang compatible na camera sa device.';if(e?.name==='NotReadableError')return 'Maaaring ginagamit ng ibang app ang camera.';return 'Camera error: '+(e?.message||e?.name||'unknown')}
@@ -125,7 +126,7 @@
       const actual=stream.getVideoTracks()[0]?.getSettings?.().facingMode;if(actual)facingMode=actual;mirrorPreview();resizeCanvases();video.classList.add('active');placeholder.style.display='none';liveBadge.classList.add('show');trackingBadge.classList.add('show');startBtn.disabled=true;stopBtn.disabled=false;switchBtn.textContent=facingMode==='environment'?'Use front camera':'Use back camera';cameraStatus('Camera on',true);lastVideoTime=-1;lastFrameAt=0;rafId=requestAnimationFrame(frameLoop);
       toastMessage(modelReady?'Camera ready. Trained decoder loaded.':'Camera ready. Landmark tracking works; a trained model is still required.');
     }catch(e){console.error(e);await stopCamera(false);cameraStatus('Camera unavailable');translation.textContent=cameraError(e);toastMessage(cameraError(e))}}
-  async function frameLoop(time){if(!stream)return;if(!processing&&video.readyState>=2&&video.currentTime!==lastVideoTime&&time-lastFrameAt>=processEvery){processing=true;lastFrameAt=time;lastVideoTime=video.currentTime;const started=performance.now();try{await holistic.send({image:video})}catch(e){console.error(e);setState('TRACKING ERROR')}finally{const ms=performance.now()-started;processEvery=ms>75?1000/12:ms>48?1000/18:1000/30;processing=false}}rafId=requestAnimationFrame(frameLoop)}
+  async function frameLoop(time){if(!stream)return;if(!processing&&video.readyState>=2&&video.currentTime!==lastVideoTime&&time-lastFrameAt>=processEvery){processing=true;lastFrameAt=time;lastVideoTime=video.currentTime;const started=performance.now();try{const sourceW=video.videoWidth||1280,sourceH=video.videoHeight||720,scale=Math.min(1,960/Math.max(sourceW,sourceH));processCanvas.width=Math.max(1,Math.round(sourceW*scale));processCanvas.height=Math.max(1,Math.round(sourceH*scale));processCtx.drawImage(video,0,0,processCanvas.width,processCanvas.height);await holistic.send({image:processCanvas})}catch(e){console.error(e);setState('TRACKING ERROR')}finally{const ms=performance.now()-started;processEvery=ms>75?1000/12:ms>48?1000/18:1000/30;processing=false}}rafId=requestAnimationFrame(frameLoop)}
   async function stopCamera(show=true){if(rafId)cancelAnimationFrame(rafId);rafId=null;processing=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;video.classList.remove('active');placeholder.style.display='flex';liveBadge.classList.remove('show');trackingBadge.classList.remove('show','detected');handCtx.clearRect(0,0,handCanvas.width,handCanvas.height);if(poseCtx)poseCtx.clearRect(0,0,poseCanvas.width,poseCanvas.height);startBtn.disabled=false;stopBtn.disabled=true;sequence=[];recentMotion=[];previousFeatures=null;signerVisible=false;segmentActive=false;segmentCommitted=false;guide?.classList.remove('is-hidden');if(show){cameraStatus('Camera off');showNoSign('Walang kasalukuyang senyas.')}}
   async function switchCamera(){const desired=facingMode==='environment'?'user':'environment';facingMode=desired;if(stream){await stopCamera(false);await startCamera()}else{mirrorPreview();switchBtn.textContent=facingMode==='environment'?'Use front camera':'Use back camera'}}
   navButtons.forEach(btn=>btn.addEventListener('click',()=>{navButtons.forEach(b=>b.classList.toggle('active',b===btn));sections.forEach(s=>s.classList.toggle('active-section',s.id===btn.dataset.target))}));
