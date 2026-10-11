@@ -9,6 +9,7 @@ A static, browser-based FSL decoder project. The current foundation tracks hands
 - Camera preview stays at the camera's available quality, while frames sent to MediaPipe are downscaled to a maximum dimension of 960 px.
 - MediaPipe Holistic draws body, hands, and key facial landmarks.
 - Landmark normalization uses a torso anchor/scale and wrist-relative hand geometry.
+- Live inference buffers a complete variable-duration sign segment and uses the same linear 30-frame resampling algorithm as the Python trainer.
 - TensorFlow.js model loading is supported, but the public repository intentionally has **no trained model yet**.
 - No sign labels are fabricated while the trained model is absent.
 - The public decoder uses Filipino-only display and prefers a browser Filipino voice, with a local browser speech fallback.
