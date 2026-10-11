@@ -25,5 +25,17 @@
     while(vector.length<DIMENSION)vector.push(0);
     return vector.slice(0,DIMENSION);
   }
-  window.SignARFeatureExtractor=Object.freeze({version:'signar-fsl-456-v1',dimension:DIMENSION,samplingFps:15,sequenceLength:30,faceIds:FACE_IDS,extract});
+  function resampleSequence(frames,target=30){
+    if(!Array.isArray(frames)||frames.length<2||!Number.isInteger(target)||target<2)throw new Error('A sequence needs at least two frames and a target length >= 2');
+    if(frames.some(frame=>!Array.isArray(frame)||frame.length!==DIMENSION||frame.some(value=>!Number.isFinite(value))))throw new Error('Invalid landmark feature frame');
+    const last=frames.length-1,out=[];
+    for(let i=0;i<target;i++){
+      const position=i*last/(target-1),lo=Math.floor(position),hi=Math.min(lo+1,last),weight=position-lo;
+      const frame=new Array(DIMENSION);
+      for(let j=0;j<DIMENSION;j++)frame[j]=frames[lo][j]*(1-weight)+frames[hi][j]*weight;
+      out.push(frame);
+    }
+    return out;
+  }
+  window.SignARFeatureExtractor=Object.freeze({version:'signar-fsl-456-v1',dimension:DIMENSION,samplingFps:15,sequenceLength:30,faceIds:FACE_IDS,extract,resampleSequence});
 })();
