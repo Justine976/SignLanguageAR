@@ -1,0 +1,70 @@
+{
+  "project": "SignAR FSL Decoder",
+  "schemaVersion": 1,
+  "trained": false,
+  "modelPath": "./model/model.json",
+  "sequenceLength": 30,
+  "featureDimension": 456,
+  "outputClasses": 20,
+  "labels": [
+    "AKO",
+    "IKAW",
+    "SIYA",
+    "KAMI",
+    "OO",
+    "HINDI",
+    "KUMUSTA",
+    "SALAMAT",
+    "PAALAM",
+    "PAUMANHIN",
+    "PWEDE",
+    "GUSTO",
+    "AYAW",
+    "TULONG",
+    "MABUTI",
+    "MASAMA",
+    "ANO",
+    "SAAN",
+    "SINO",
+    "BAKIT"
+  ],
+  "featureSchema": {
+    "pose": {
+      "count": 33,
+      "valuesPerPoint": [
+        "x",
+        "y",
+        "z",
+        "visibility"
+      ],
+      "size": 132
+    },
+    "hands": {
+      "countPerHand": 21,
+      "valuesPerPoint": [
+        "bodyRelativeX",
+        "bodyRelativeY",
+        "bodyRelativeZ",
+        "wristRelativeX",
+        "wristRelativeY",
+        "wristRelativeZ"
+      ],
+      "handCount": 2,
+      "size": 252
+    },
+    "face": {
+      "pointCount": 24,
+      "valuesPerPoint": [
+        "x",
+        "y",
+        "z"
+      ],
+      "size": 72
+    },
+    "total": 456
+  },
+  "note": "Set trained=true only after a compatible model is trained, signer-independent tests pass, and the vocabulary/sign forms are reviewed by FSL experts.",
+  "samplingFps": 15,
+  "sampleWindowSeconds": 2,
+  "featureVersion": "signar-fsl-456-v1"
+}

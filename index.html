@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="fil">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -11,14 +11,14 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icons/icon.svg" />
   <link rel="stylesheet" href="style.css" />
-  <title>SignAR | Filipino Sign Language Recognition & AR</title>
+  <title>SignAR | FSL Decoder</title>
 </head>
 <body>
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">SA</div>
-        <div><h1>SignAR</h1><p>Real-time recognition and augmented reality visualization of Filipino Sign Language</p></div>
+        <div><h1>SignAR</h1><p>Real-time Filipino Sign Language decoder</p></div>
       </div>
       <div class="top-actions">
         <button class="secondary-btn install-btn" id="installBtn" hidden>Install app</button>
@@ -36,37 +36,39 @@
         <div class="intro-banner card">
           <div>
             <span class="eyebrow">FILIPINO SIGN LANGUAGE LEARNING TOOL</span>
-            <h2>Recognize, understand, and practice FSL in real time.</h2>
-            <p>SignAR uses the device camera, computer vision, landmark-based recognition, and AR-style visual feedback to support interactive Filipino Sign Language learning.</p>
+            <h2>Decode Filipino Sign Language in real time.</h2>
+            <p>A browser-based FSL decoding prototype. Landmark tracking is active; the trained temporal model will be enabled once verified training data is available.</p>
           </div>
           <div class="feature-chips">
-            <span>📷 Camera</span><span>✋ Hand tracking</span><span>✨ AR feedback</span><span>🔊 Voice</span>
+            <span>📷 Live camera</span><span>🧍 Full-body tracking</span><span>🧠 Sequence model</span><span>🔊 Filipino voice</span>
           </div>
         </div>
 
         <div class="dashboard">
           <section class="camera-card card">
             <div class="section-heading">
-              <div><span class="eyebrow">FILIPINO SIGN LANGUAGE</span><h2>Live AR recognition</h2></div>
+              <div><span class="eyebrow">FILIPINO SIGN LANGUAGE</span><h2>Live decoder</h2></div>
               <button class="secondary-btn" id="switchCameraBtn">Use back camera</button>
             </div>
 
             <div class="camera-stage" id="cameraStage">
               <video id="video" autoplay playsinline muted></video>
               <canvas id="handCanvas" class="hand-canvas"></canvas>
+              <canvas id="poseCanvas" class="hand-canvas pose-canvas" aria-hidden="true"></canvas>
+              <div class="position-guide" id="positionGuide" aria-hidden="true"><span></span><span></span><span></span></div>
               <div class="ar-overlay" id="arOverlay">
                 <div class="ar-title">FSL</div>
                 <div class="ar-sign" id="arSign">Waiting for a sign</div>
                 <div class="ar-meaning" id="arMeaning">Show a supported Filipino Sign Language gesture.</div>
               </div>
-              <div class="tracking-badge" id="trackingBadge">HANDS: SEARCHING</div>
+              <div class="tracking-badge" id="trackingBadge">TRACKING: SEARCHING</div>
               <div class="camera-placeholder" id="cameraPlaceholder">
                 <div class="hand-icon">🤟</div>
-                <h3>Ready for FSL recognition</h3>
-                <p>Start the camera, place your hand or hands clearly in view, and make a supported Filipino Sign Language gesture.</p>
+                <h3>Ready to decode FSL</h3>
+                <p>Start the camera and keep your hands, upper body, and face visible. Landmark tracking is visual support, not a trained decoder by itself.</p>
               </div>
               <div class="scan-frame"><span></span><span></span><span></span><span></span></div>
-              <div class="live-badge" id="liveBadge">AR LIVE</div>
+              <div class="live-badge" id="liveBadge">LIVE TRACKING</div>
             </div>
 
             <div class="camera-actions">
@@ -74,18 +76,18 @@
               <button class="secondary-btn" id="fullscreenBtn">Fullscreen AR</button>
               <button class="danger-btn" id="stopCameraBtn" disabled>Stop</button>
             </div>
-            <p class="privacy-note">Camera frames are processed in the browser for this prototype. No recognition history is stored by the interface.</p>
+            <p class="privacy-note">Video and landmark processing run locally in your browser. Raw recordings are not uploaded by the public decoder.</p>
           </section>
 
           <aside class="result-column">
             <section class="result-card card">
               <span class="eyebrow">REAL-TIME RECOGNITION</span>
               <div class="recognition-state" id="recognitionState">SEARCHING</div>
-              <div class="result-label">Detected FSL sign</div>
-              <div class="detected-sign" id="detectedSign">Waiting...</div>
+              <div class="result-label">Current sign prediction</div>
+              <div class="detected-sign" id="detectedSign">NO SIGN</div>
               <div class="confidence-row"><span>Confidence</span><strong id="confidenceValue">0%</strong></div>
               <div class="progress"><div id="confidenceBar"></div></div>
-              <div class="translation-box"><span>Speech / meaning</span><strong id="translationText">No sign detected yet.</strong></div>
+              <div class="translation-box"><span>Decoder status</span><strong id="translationText">Trained FSL model not installed yet.</strong></div>
               <div class="type-pill" id="typePill">Automatic</div>
             </section>
 
@@ -99,8 +101,8 @@
                 <div class="raw-output" id="rawOutput">No confirmed gestures yet.</div>
               </div>
               <div class="sentence-block clean-block">
-                <span class="sentence-label">Combined sentence</span>
-                <div class="sentence-output" id="sentenceOutput">Make one sign, hold it steady, then relax your hand before the next sign.</div>
+                <span class="sentence-label">Decoded sentence</span>
+                <div class="sentence-output" id="sentenceOutput">Your decoded sentence will appear here.</div>
               </div>
               <div class="sentence-actions">
                 <button class="secondary-btn" id="deleteBtn">Delete</button>
@@ -108,11 +110,11 @@
               </div>
               <div class="voice-controls">
                 <label class="voice-language" for="voiceLanguage"><span>Voice language</span>
-                  <select id="voiceLanguage"><option value="fil" selected>Filipino</option><option value="en">English</option></select>
+                  <select id="voiceLanguage"><option value="fil" selected>Filipino</option></select>
                 </label>
-                <label class="speech-toggle"><input type="checkbox" id="autoSpeakToggle" checked /> <span>Speak sign when detected</span></label>
+                <label class="speech-toggle"><input type="checkbox" id="autoSpeakToggle" checked /> <span>Speak sentence after signing pause</span></label>
               </div>
-              <div class="model-note"><strong>Supported prototype vocabulary</strong><span> Kumusta, Salamat, Oo, Hindi, Tulong, Mahal Kita, Pakiusap, Paumanhin, Tigil, Sakit, Kain, Inom, Dagdag, Paano, Ano, Saan, Kailan, Ikaw, Tayo, Mabuti and Masama. Voice output can be Filipino or English.</span></div>
+              <div class="model-note"><strong>Model status</strong><span id="modelStatus">No trained model is installed yet. Sign predictions will remain disabled until verified FSL recordings are collected and a compatible temporal model is trained.</span></div>
             </section>
           </aside>
         </div>
@@ -130,7 +132,9 @@
   </div>
 
   <div class="toast" id="toast"></div>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js"></script>
+  <script src="./shared/fsl-features.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5.1675471629/holistic.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js" crossorigin="anonymous"></script>
   <script src="script.js"></script>
 </body>
 </html>
