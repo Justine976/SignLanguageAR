@@ -19,7 +19,7 @@
 
   const HOLISTIC_VERSION='0.5.1675471629';
   const HOLISTIC_BASE='https://cdn.jsdelivr.net/npm/@mediapipe/holistic@'+HOLISTIC_VERSION;
-  const SEQUENCE_LENGTH=30, FEATURE_DIMENSION=456, SEQUENCE_SAMPLE_MS=1000/15;
+  const SEQUENCE_LENGTH=30, FEATURE_DIMENSION=456, SEQUENCE_SAMPLE_MS=1000/15, MIN_SEGMENT_FRAMES=8, QUIET_TO_END_MS=750, MAX_SEGMENT_FRAMES=180;
   const LABELS=['AKO','IKAW','SIYA','KAMI','OO','HINDI','KUMUSTA','SALAMAT','PAALAM','PAUMANHIN','PWEDE','GUSTO','AYAW','TULONG','MABUTI','MASAMA','ANO','SAAN','SINO','BAKIT'];
   const WORDS={AKO:'Ako',IKAW:'Ikaw',SIYA:'Siya',KAMI:'Kami',OO:'Oo',HINDI:'Hindi',KUMUSTA:'Kumusta',SALAMAT:'Salamat',PAALAM:'Paalam',PAUMANHIN:'Paumanhin',PWEDE:'Pwede',GUSTO:'Gusto',AYAW:'Ayaw',TULONG:'Tulong',MABUTI:'Mabuti',MASAMA:'Masama',ANO:'Ano',SAAN:'Saan',SINO:'Sino',BAKIT:'Bakit'};
   // Facial points emphasize mouth, brows, eyes and face outline for non-manual FSL features.
@@ -30,7 +30,7 @@
 
   let stream=null, holistic=null, facingMode='environment', rafId=null, processing=false, lastVideoTime=-1, lastFrameAt=0;
   let processEvery=1000/30, model=null, modelConfig=null, modelReady=false, modelLoadPromise=null;
-  let sequence=[], previousFeatures=null, recentMotion=[], signerVisible=false, inferenceBusy=false, lastInferenceAt=0;
+  let segmentFrames=[], previousFeatures=null, signerVisible=false, inferenceBusy=false, lastInferenceAt=0;
   let averageInferenceMs=0, inferenceCount=0, inferenceEveryMs=100, predictionLabel='', predictionStreak=0, lastCommitAt=0;
   let segmentActive=false, segmentCommitted=false, lastMotionAt=0, speechTimer=null, sentence=[], lastSentenceLabel='';
   let installPrompt=null, voices=[];
@@ -80,9 +80,9 @@
     }catch(error){modelReady=false;console.info('FSL model unavailable:',error.message);modelStatus.textContent='Wala pang compatible na trained FSL model. Hindi gagawa ng pekeng prediction habang wala ito.'}
   })();return modelLoadPromise}
 
-  async function infer(){if(!modelReady||!model||inferenceBusy||sequence.length<SEQUENCE_LENGTH||performance.now()-lastInferenceAt<inferenceEveryMs)return;inferenceBusy=true;lastInferenceAt=performance.now();const started=performance.now();let input=null,output=null;
-    try{if(!recentMotion.some(item=>performance.now()-item.t<1800&&item.energy>=.0055)){showNoSign('Maghintay ng malinaw na galaw ng senyas.');return}
-      input=window.tf.tensor3d([sequence.slice(-SEQUENCE_LENGTH)],[1,SEQUENCE_LENGTH,FEATURE_DIMENSION]);output=model.predict(input);const tensor=Array.isArray(output)?output[0]:output;const p=await tensor.data();let best=0;for(let i=1;i<p.length;i++)if(p[i]>p[best])best=i;
+  async function infer(){if(!modelReady||!model||!segmentActive||inferenceBusy||segmentFrames.length<MIN_SEGMENT_FRAMES||performance.now()-lastInferenceAt<inferenceEveryMs)return;inferenceBusy=true;lastInferenceAt=performance.now();const started=performance.now();let input=null,output=null;
+    try{const sampled=window.SignARFeatureExtractor.resampleSequence(segmentFrames,SEQUENCE_LENGTH);
+      input=window.tf.tensor3d([sampled],[1,SEQUENCE_LENGTH,FEATURE_DIMENSION]);output=model.predict(input);const tensor=Array.isArray(output)?output[0]:output;const p=await tensor.data();let best=0;for(let i=1;i<p.length;i++)if(p[i]>p[best])best=i;
       const label=modelConfig.labels?.[best]||LABELS[best],confidence=clamp(p[best]*100,0,100);if(!label)return;
       if(predictionLabel===label)predictionStreak++;else{predictionLabel=label;predictionStreak=1}
       detected.textContent=label;confidenceValue.textContent=Math.round(confidence)+'%';confidenceBar.style.width=Math.round(confidence)+'%';translation.textContent='Prediction ng temporal model: '+label;typePill.textContent='TensorFlow.js sequence model';arSign.textContent=label;arMeaning.textContent=WORDS[label]||label;overlay.classList.add('active');setState('PREDICTING','verifying');
@@ -93,12 +93,12 @@
   }
 
   function onResults(r){drawResults(r);const vector=makeFeatures(r);signerVisible=!!vector;guide?.classList.toggle('is-hidden',signerVisible);
-    if(!vector){sequence=[];recentMotion=[];previousFeatures=null;predictionLabel='';predictionStreak=0;segmentActive=false;segmentCommitted=false;lastSentenceLabel='';showNoSign('Walang nakikitang katawan sa tracking area.');return}
-    const now=performance.now(),energy=measureMotion(vector);recentMotion.push({t:now,energy});recentMotion=recentMotion.filter(x=>now-x.t<1800);
-    if(energy>=.0055){lastMotionAt=now;if(!segmentActive){segmentActive=true;segmentCommitted=false}stopSpeech()}
-    if(segmentActive&&sequence.length>=SEQUENCE_LENGTH&&now-lastMotionAt>750){const hadPrediction=segmentCommitted;segmentActive=false;segmentCommitted=false;predictionLabel='';predictionStreak=0;if(hadPrediction&&sentence.length)scheduleSpeech();showNoSign('Tapos na ang senyas.')}
+    if(!vector){segmentFrames=[];previousFeatures=null;predictionLabel='';predictionStreak=0;segmentActive=false;segmentCommitted=false;lastSentenceLabel='';showNoSign('Walang nakikitang katawan sa tracking area.');return}
+    const now=performance.now(),energy=measureMotion(vector);
+    if(energy>=.0055){lastMotionAt=now;if(!segmentActive){segmentActive=true;segmentCommitted=false;segmentFrames=[];predictionLabel='';predictionStreak=0;lastProcessedAtForSequence=0}stopSpeech()}
     previousFeatures=vector;
-    if(now-lastProcessedAtForSequence>=SEQUENCE_SAMPLE_MS){sequence.push(vector);if(sequence.length>SEQUENCE_LENGTH)sequence.shift();lastProcessedAtForSequence=now;void infer()}
+    if(segmentActive&&now-lastProcessedAtForSequence>=SEQUENCE_SAMPLE_MS){segmentFrames.push(vector);if(segmentFrames.length>MAX_SEGMENT_FRAMES)segmentFrames.shift();lastProcessedAtForSequence=now;void infer()}
+    if(segmentActive&&segmentFrames.length>=MIN_SEGMENT_FRAMES&&now-lastMotionAt>QUIET_TO_END_MS&&!inferenceBusy){const hadPrediction=segmentCommitted;segmentActive=false;segmentCommitted=false;predictionLabel='';predictionStreak=0;segmentFrames=[];if(hadPrediction&&sentence.length)scheduleSpeech();showNoSign('Tapos na ang senyas.')}
     if(!modelReady)showNoSign('Landmark tracking active. Kailangan pa ang trained temporal model.');
   }
   let lastProcessedAtForSequence=0;
@@ -117,7 +117,7 @@
       toastMessage(modelReady?'Camera ready. Trained decoder loaded.':'Camera ready. Landmark tracking works; a trained model is still required.');
     }catch(e){console.error(e);await stopCamera(false);cameraStatus('Camera unavailable');translation.textContent=cameraError(e);toastMessage(cameraError(e))}}
   async function frameLoop(time){if(!stream)return;if(!processing&&video.readyState>=2&&video.currentTime!==lastVideoTime&&time-lastFrameAt>=processEvery){processing=true;lastFrameAt=time;lastVideoTime=video.currentTime;const started=performance.now();try{const sourceW=video.videoWidth||1280,sourceH=video.videoHeight||720,scale=Math.min(1,960/Math.max(sourceW,sourceH));processCanvas.width=Math.max(1,Math.round(sourceW*scale));processCanvas.height=Math.max(1,Math.round(sourceH*scale));processCtx.drawImage(video,0,0,processCanvas.width,processCanvas.height);await holistic.send({image:processCanvas})}catch(e){console.error(e);setState('TRACKING ERROR')}finally{const ms=performance.now()-started;processEvery=ms>75?1000/12:ms>48?1000/18:1000/30;processing=false}}rafId=requestAnimationFrame(frameLoop)}
-  async function stopCamera(show=true){if(rafId)cancelAnimationFrame(rafId);rafId=null;processing=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;video.classList.remove('active');placeholder.style.display='flex';liveBadge.classList.remove('show');trackingBadge.classList.remove('show','detected');handCtx.clearRect(0,0,handCanvas.width,handCanvas.height);if(poseCtx)poseCtx.clearRect(0,0,poseCanvas.width,poseCanvas.height);startBtn.disabled=false;stopBtn.disabled=true;sequence=[];recentMotion=[];previousFeatures=null;signerVisible=false;segmentActive=false;segmentCommitted=false;guide?.classList.remove('is-hidden');if(show){cameraStatus('Camera off');showNoSign('Walang kasalukuyang senyas.')}}
+  async function stopCamera(show=true){if(rafId)cancelAnimationFrame(rafId);rafId=null;processing=false;if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;video.classList.remove('active');placeholder.style.display='flex';liveBadge.classList.remove('show');trackingBadge.classList.remove('show','detected');handCtx.clearRect(0,0,handCanvas.width,handCanvas.height);if(poseCtx)poseCtx.clearRect(0,0,poseCanvas.width,poseCanvas.height);startBtn.disabled=false;stopBtn.disabled=true;segmentFrames=[];previousFeatures=null;signerVisible=false;segmentActive=false;segmentCommitted=false;guide?.classList.remove('is-hidden');if(show){cameraStatus('Camera off');showNoSign('Walang kasalukuyang senyas.')}}
   async function switchCamera(){const desired=facingMode==='environment'?'user':'environment';facingMode=desired;if(stream){await stopCamera(false);await startCamera()}else{mirrorPreview();switchBtn.textContent=facingMode==='environment'?'Use front camera':'Use back camera'}}
   navButtons.forEach(btn=>btn.addEventListener('click',()=>{navButtons.forEach(b=>b.classList.toggle('active',b===btn));sections.forEach(s=>s.classList.toggle('active-section',s.id===btn.dataset.target))}));
   startBtn.addEventListener('click',startCamera);stopBtn.addEventListener('click',()=>stopCamera(true));switchBtn.addEventListener('click',switchCamera);
