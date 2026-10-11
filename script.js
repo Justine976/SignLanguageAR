@@ -19,7 +19,7 @@
 
   const HOLISTIC_VERSION='0.5.1675471629';
   const HOLISTIC_BASE='https://cdn.jsdelivr.net/npm/@mediapipe/holistic@'+HOLISTIC_VERSION;
-  const SEQUENCE_LENGTH=30, FEATURE_DIMENSION=456;
+  const SEQUENCE_LENGTH=30, FEATURE_DIMENSION=456, SEQUENCE_SAMPLE_MS=1000/15;
   const LABELS=['AKO','IKAW','SIYA','KAMI','OO','HINDI','KUMUSTA','SALAMAT','PAALAM','PAUMANHIN','PWEDE','GUSTO','AYAW','TULONG','MABUTI','MASAMA','ANO','SAAN','SINO','BAKIT'];
   const WORDS={AKO:'Ako',IKAW:'Ikaw',SIYA:'Siya',KAMI:'Kami',OO:'Oo',HINDI:'Hindi',KUMUSTA:'Kumusta',SALAMAT:'Salamat',PAALAM:'Paalam',PAUMANHIN:'Paumanhin',PWEDE:'Pwede',GUSTO:'Gusto',AYAW:'Ayaw',TULONG:'Tulong',MABUTI:'Mabuti',MASAMA:'Masama',ANO:'Ano',SAAN:'Saan',SINO:'Sino',BAKIT:'Bakit'};
   // Facial points emphasize mouth, brows, eyes and face outline for non-manual FSL features.
@@ -31,7 +31,7 @@
   let stream=null, holistic=null, facingMode='environment', rafId=null, processing=false, lastVideoTime=-1, lastFrameAt=0;
   let processEvery=1000/30, model=null, modelConfig=null, modelReady=false, modelLoadPromise=null;
   let sequence=[], previousFeatures=null, recentMotion=[], signerVisible=false, inferenceBusy=false, lastInferenceAt=0;
-  let averageInferenceMs=0, inferenceCount=0, predictionLabel='', predictionStreak=0;
+  let averageInferenceMs=0, inferenceCount=0, inferenceEveryMs=100, predictionLabel='', predictionStreak=0;
   let segmentActive=false, segmentCommitted=false, lastMotionAt=0, speechTimer=null, sentence=[], lastSentenceLabel='';
   let installPrompt=null, voices=[];
 
@@ -90,7 +90,7 @@
     }catch(error){modelReady=false;console.info('FSL model unavailable:',error.message);modelStatus.textContent='Wala pang compatible na trained FSL model. Hindi gagawa ng pekeng prediction habang wala ito.'}
   })();return modelLoadPromise}
 
-  async function infer(){if(!modelReady||!model||inferenceBusy||sequence.length<SEQUENCE_LENGTH||performance.now()-lastInferenceAt<100)return;inferenceBusy=true;lastInferenceAt=performance.now();const started=performance.now();let input=null,output=null;
+  async function infer(){if(!modelReady||!model||inferenceBusy||sequence.length<SEQUENCE_LENGTH||performance.now()-lastInferenceAt<inferenceEveryMs)return;inferenceBusy=true;lastInferenceAt=performance.now();const started=performance.now();let input=null,output=null;
     try{if(!recentMotion.some(item=>performance.now()-item.t<1800&&item.energy>=.0055)){showNoSign('Maghintay ng malinaw na galaw ng senyas.');return}
       input=window.tf.tensor3d([sequence.slice(-SEQUENCE_LENGTH)],[1,SEQUENCE_LENGTH,FEATURE_DIMENSION]);output=model.predict(input);const tensor=Array.isArray(output)?output[0]:output;const p=await tensor.data();let best=0;for(let i=1;i<p.length;i++)if(p[i]>p[best])best=i;
       const label=modelConfig.labels?.[best]||LABELS[best],confidence=clamp(p[best]*100,0,100);if(!label)return;
@@ -99,16 +99,16 @@
       // Never gate sentence insertion on confidence; segmenting and temporal stability prevent frame-by-frame duplicates.
       if(segmentActive&&!segmentCommitted&&predictionStreak>=2&&signerVisible)addWord(label,confidence);
     }catch(error){console.error('Inference error:',error);translation.textContent='Nagkaroon ng error sa model inference.';setState('MODEL ERROR')}
-    finally{input?.dispose();if(output)(Array.isArray(output)?output:[output]).forEach(t=>t.dispose?.());const elapsed=performance.now()-started;inferenceCount++;averageInferenceMs+=(elapsed-averageInferenceMs)/inferenceCount;const inferenceDelay=averageInferenceMs>85?180:averageInferenceMs>50?130:100;modelConfig.inferenceIntervalMs=inferenceDelay;inferenceBusy=false}
+    finally{input?.dispose();if(output)(Array.isArray(output)?output:[output]).forEach(t=>t.dispose?.());const elapsed=performance.now()-started;inferenceCount++;averageInferenceMs+=(elapsed-averageInferenceMs)/inferenceCount;const inferenceDelay=averageInferenceMs>85?180:averageInferenceMs>50?130:100;inferenceEveryMs=inferenceDelay;inferenceBusy=false}
   }
 
   function onResults(r){drawResults(r);const vector=makeFeatures(r);signerVisible=!!vector;guide?.classList.toggle('is-hidden',signerVisible);
     if(!vector){sequence=[];recentMotion=[];previousFeatures=null;predictionLabel='';predictionStreak=0;segmentActive=false;segmentCommitted=false;lastSentenceLabel='';showNoSign('Walang nakikitang katawan sa tracking area.');return}
     const now=performance.now(),energy=measureMotion(vector);recentMotion.push({t:now,energy});recentMotion=recentMotion.filter(x=>now-x.t<1800);
     if(energy>=.0055){lastMotionAt=now;if(!segmentActive){segmentActive=true;segmentCommitted=false}stopSpeech()}
-    if(segmentActive&&now-lastMotionAt>1800){const hadPrediction=segmentCommitted;segmentActive=false;segmentCommitted=false;predictionLabel='';predictionStreak=0;if(hadPrediction&&sentence.length)scheduleSpeech();showNoSign('Tapos na ang senyas.')}
+    if(segmentActive&&sequence.length>=SEQUENCE_LENGTH&&now-lastMotionAt>750){const hadPrediction=segmentCommitted;segmentActive=false;segmentCommitted=false;predictionLabel='';predictionStreak=0;if(hadPrediction&&sentence.length)scheduleSpeech();showNoSign('Tapos na ang senyas.')}
     previousFeatures=vector;
-    if(now-lastProcessedAtForSequence>=100){sequence.push(vector);if(sequence.length>SEQUENCE_LENGTH)sequence.shift();lastProcessedAtForSequence=now;void infer()}
+    if(now-lastProcessedAtForSequence>=SEQUENCE_SAMPLE_MS){sequence.push(vector);if(sequence.length>SEQUENCE_LENGTH)sequence.shift();lastProcessedAtForSequence=now;void infer()}
     if(!modelReady)showNoSign('Landmark tracking active. Kailangan pa ang trained temporal model.');
   }
   let lastProcessedAtForSequence=0;
