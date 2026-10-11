@@ -31,11 +31,12 @@
   let stream=null, holistic=null, facingMode='environment', rafId=null, processing=false, lastVideoTime=-1, lastFrameAt=0;
   let processEvery=1000/30, model=null, modelConfig=null, modelReady=false, modelLoadPromise=null;
   let sequence=[], previousFeatures=null, recentMotion=[], signerVisible=false, inferenceBusy=false, lastInferenceAt=0;
-  let averageInferenceMs=0, inferenceCount=0, inferenceEveryMs=100, predictionLabel='', predictionStreak=0;
+  let averageInferenceMs=0, inferenceCount=0, inferenceEveryMs=100, predictionLabel='', predictionStreak=0, lastCommitAt=0;
   let segmentActive=false, segmentCommitted=false, lastMotionAt=0, speechTimer=null, sentence=[], lastSentenceLabel='';
   let installPrompt=null, voices=[];
 
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const COMMIT_COOLDOWN_MS=700;
   const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
   const visible=p=>p&&Number.isFinite(p.x)&&Number.isFinite(p.y);
   function toastMessage(text){toast.textContent=text;toast.classList.add('show');clearTimeout(toastMessage.timer);toastMessage.timer=setTimeout(()=>toast.classList.remove('show'),2800)}
@@ -46,10 +47,10 @@
   function chooseFilipinoVoice(){if(!('speechSynthesis'in window))return null;voices=window.speechSynthesis.getVoices()||[];return voices.find(v=>/^fil(-|$)/i.test(v.lang))||voices.find(v=>/^tl(-|$)/i.test(v.lang))||voices.find(v=>/^en-PH$/i.test(v.lang))||null}
   function speakSentence(){if(!autoSpeak?.checked||!sentence.length||!('speechSynthesis'in window))return;const utterance=new SpeechSynthesisUtterance(sentence.map(w=>WORDS[w]||w).join(' '));utterance.lang='fil-PH';utterance.rate=.92;const voice=chooseFilipinoVoice();if(voice)utterance.voice=voice;window.speechSynthesis.speak(utterance)}
   function scheduleSpeech(){if(speechTimer)clearTimeout(speechTimer);speechTimer=setTimeout(()=>{speechTimer=null;speakSentence()},1150)}
-  function addWord(label,confidence){if(segmentCommitted)return;sentence.push(label);segmentCommitted=true;lastSentenceLabel=label;updateSentence();toastMessage('Na-decode: '+label+' ('+Math.round(confidence)+'%)')}
+  function addWord(label,confidence){if(segmentCommitted||performance.now()-lastCommitAt<COMMIT_COOLDOWN_MS)return;sentence.push(label);segmentCommitted=true;lastSentenceLabel=label;lastCommitAt=performance.now();updateSentence();toastMessage('Na-decode: '+label+' ('+Math.round(confidence)+'%)')}
 
   function showNoSign(message){detected.textContent='NO SIGN';confidenceValue.textContent='—';confidenceBar.style.width='0%';translation.textContent=modelReady?message:'Landmark tracking active; wala pang trained FSL model.';typePill.textContent=modelReady?'Waiting for sign':'Model not installed';setState(modelReady?'NO SIGN':'MODEL NOT READY');overlay.classList.remove('active')}
-  function resizeCanvases(){const w=video.videoWidth||video.clientWidth||1280,h=video.videoHeight||video.clientHeight||720;for(const c of [handCanvas,poseCanvas])if(c&&(c.width!==w||c.height!==h)){c.width=w;c.height=h}}
+  function resizeCanvases(){const sourceW=video.videoWidth||video.clientWidth||1280,sourceH=video.videoHeight||video.clientHeight||720,s=Math.min(1,960/Math.max(sourceW,sourceH)),w=Math.max(1,Math.round(sourceW*s)),h=Math.max(1,Math.round(sourceH*s));for(const c of [handCanvas,poseCanvas])if(c&&(c.width!==w||c.height!==h)){c.width=w;c.height=h}}
   function mirrorPreview(){const mirror=facingMode==='user';video.classList.toggle('mirror',mirror);handCanvas.classList.toggle('mirror',mirror);poseCanvas?.classList.toggle('mirror',mirror)}
   function drawLinks(context,points,links,w,h,color,lineScale=2){if(!context||!points?.length)return;context.save();context.strokeStyle=color;context.lineWidth=Math.max(1.4,w/600*lineScale);context.lineCap='round';context.lineJoin='round';for(const [a,b] of links){if(!points[a]||!points[b])continue;context.beginPath();context.moveTo(points[a].x*w,points[a].y*h);context.lineTo(points[b].x*w,points[b].y*h);context.stroke()}context.restore()}
   function drawPoints(context,points,w,h,color,indices=null){if(!context||!points?.length)return;context.save();context.fillStyle=color;const list=indices||points.map((_,i)=>i);for(const i of list){const p=points[i];if(!p)continue;context.beginPath();context.arc(p.x*w,p.y*h,Math.max(1.4,w/850),0,Math.PI*2);context.fill()}context.restore()}
@@ -71,8 +72,8 @@
     // Pose (132): normalized xyz + visibility.
     for(let i=0;i<33;i++){const p=pose[i],n=norm(p);v.push(...n,clamp(p?.visibility??0,0,1))}
     // Each hand (126): body-relative xyz plus wrist-relative, palm-scaled xyz.
-    for(const hand of [left,right]){const wrist=hand?.[0],palm=hand?.length>17?Math.max(.0001,dist(hand[5],hand[17])):1;
-      for(let i=0;i<21;i++){const p=hand?.[i],g=norm(p),local=p&&wrist?[(p.x-wrist.x)/palm,(p.y-wrist.y)/palm,((p.z||0)-(wrist.z||0))/palm]:[0,0,0];v.push(...g,...local)}}
+    for(const hand of [left,right]){const wrist=hand?.[0],palm=hand?.length>17?Math.max(1,Math.hypot((hand[5].x-hand[17].x)*width,(hand[5].y-hand[17].y)*height)):1;
+      for(let i=0;i<21;i++){const p=hand?.[i],g=norm(p),local=p&&wrist?[(p.x-wrist.x)*width/palm,(p.y-wrist.y)*height/palm,((p.z||0)-(wrist.z||0))*width/palm]:[0,0,0];v.push(...g,...local)}}
     // Face (72): representative mouth/eye/brow landmarks in body-relative coordinates.
     for(const i of FACE_IDS)v.push(...norm(face[i]));
     while(v.length<FEATURE_DIMENSION)v.push(0);return v.slice(0,FEATURE_DIMENSION);
