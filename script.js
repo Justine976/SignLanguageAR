@@ -18,7 +18,7 @@
   const navButtons=[...document.querySelectorAll('.nav-btn')], sections=[...document.querySelectorAll('.page-section')];
 
   const HOLISTIC_VERSION='0.5.1675471629';
-  const HOLISTIC_BASE=\`https://cdn.jsdelivr.net/npm/@mediapipe/holistic@\${HOLISTIC_VERSION}\`;
+  const HOLISTIC_BASE='https://cdn.jsdelivr.net/npm/@mediapipe/holistic@'+HOLISTIC_VERSION;
   const SEQUENCE_LENGTH=30, FEATURE_DIMENSION=456;
   const LABELS=['AKO','IKAW','SIYA','KAMI','OO','HINDI','KUMUSTA','SALAMAT','PAALAM','PAUMANHIN','PWEDE','GUSTO','AYAW','TULONG','MABUTI','MASAMA','ANO','SAAN','SINO','BAKIT'];
   const WORDS={AKO:'Ako',IKAW:'Ikaw',SIYA:'Siya',KAMI:'Kami',OO:'Oo',HINDI:'Hindi',KUMUSTA:'Kumusta',SALAMAT:'Salamat',PAALAM:'Paalam',PAUMANHIN:'Paumanhin',PWEDE:'Pwede',GUSTO:'Gusto',AYAW:'Ayaw',TULONG:'Tulong',MABUTI:'Mabuti',MASAMA:'Masama',ANO:'Ano',SAAN:'Saan',SINO:'Sino',BAKIT:'Bakit'};
