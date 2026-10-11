@@ -47,7 +47,7 @@
   function chooseFilipinoVoice(){if(!('speechSynthesis'in window))return null;voices=window.speechSynthesis.getVoices()||[];return voices.find(v=>/^fil(-|$)/i.test(v.lang))||voices.find(v=>/^tl(-|$)/i.test(v.lang))||voices.find(v=>/^en-PH$/i.test(v.lang))||null}
   function speakSentence(){if(!autoSpeak?.checked||!sentence.length||!('speechSynthesis'in window))return;const utterance=new SpeechSynthesisUtterance(sentence.map(w=>WORDS[w]||w).join(' '));utterance.lang='fil-PH';utterance.rate=.92;const voice=chooseFilipinoVoice();if(voice)utterance.voice=voice;window.speechSynthesis.speak(utterance)}
   function scheduleSpeech(){if(speechTimer)clearTimeout(speechTimer);speechTimer=setTimeout(()=>{speechTimer=null;speakSentence()},1150)}
-  function addWord(label,confidence){if(segmentCommitted||performance.now()-lastCommitAt<COMMIT_COOLDOWN_MS)return;sentence.push(label);segmentCommitted=true;lastSentenceLabel=label;lastCommitAt=performance.now();updateSentence();toastMessage('Na-decode: '+label+' ('+Math.round(confidence)+'%)')}
+  function addWord(label,confidence){if(segmentCommitted)return;segmentCommitted=true;const now=performance.now();if(now-lastCommitAt<COMMIT_COOLDOWN_MS)return;sentence.push(label);lastSentenceLabel=label;lastCommitAt=now;updateSentence();toastMessage('Na-decode: '+label+' ('+Math.round(confidence)+'%)')}
 
   function showNoSign(message){detected.textContent='NO SIGN';confidenceValue.textContent='—';confidenceBar.style.width='0%';translation.textContent=modelReady?message:'Landmark tracking active; wala pang trained FSL model.';typePill.textContent=modelReady?'Waiting for sign':'Model not installed';setState(modelReady?'NO SIGN':'MODEL NOT READY');overlay.classList.remove('active')}
   function resizeCanvases(){const sourceW=video.videoWidth||video.clientWidth||1280,sourceH=video.videoHeight||video.clientHeight||720,s=Math.min(1,960/Math.max(sourceW,sourceH)),w=Math.max(1,Math.round(sourceW*s)),h=Math.max(1,Math.round(sourceH*s));for(const c of [handCanvas,poseCanvas])if(c&&(c.width!==w||c.height!==h)){c.width=w;c.height=h}}
@@ -98,7 +98,7 @@
     if(energy>=.0055){lastMotionAt=now;if(!segmentActive){segmentActive=true;segmentCommitted=false;segmentFrames=[];predictionLabel='';predictionStreak=0;lastProcessedAtForSequence=0}stopSpeech()}
     previousFeatures=vector;
     if(segmentActive&&now-lastProcessedAtForSequence>=SEQUENCE_SAMPLE_MS){segmentFrames.push(vector);if(segmentFrames.length>MAX_SEGMENT_FRAMES)segmentFrames.shift();lastProcessedAtForSequence=now;void infer()}
-    if(segmentActive&&segmentFrames.length>=MIN_SEGMENT_FRAMES&&now-lastMotionAt>QUIET_TO_END_MS&&!inferenceBusy){const hadPrediction=segmentCommitted;segmentActive=false;segmentCommitted=false;predictionLabel='';predictionStreak=0;segmentFrames=[];if(hadPrediction&&sentence.length)scheduleSpeech();showNoSign('Tapos na ang senyas.')}
+    if(segmentActive&&segmentFrames.length>=MIN_SEGMENT_FRAMES&&now-lastMotionAt>QUIET_TO_END_MS&&(segmentCommitted||now-lastMotionAt>1400)&&!inferenceBusy){const hadPrediction=segmentCommitted;segmentActive=false;segmentCommitted=false;predictionLabel='';predictionStreak=0;segmentFrames=[];if(hadPrediction&&sentence.length)scheduleSpeech();showNoSign('Tapos na ang senyas.')}
     if(!modelReady)showNoSign('Landmark tracking active. Kailangan pa ang trained temporal model.');
   }
   let lastProcessedAtForSequence=0;
