@@ -68,6 +68,9 @@
 
   async function loadModel(){if(modelLoadPromise)return modelLoadPromise;modelLoadPromise=(async()=>{
     try{const response=await fetch('./model/vocabulary.json',{cache:'no-store'});if(!response.ok)throw new Error('Vocabulary manifest is not present');modelConfig=await response.json();
+      if(modelConfig.featureVersion!=='signar-fsl-456-v1')throw new Error('Feature schema mismatch; expected signar-fsl-456-v1');
+      if(JSON.stringify(modelConfig.labels)!==JSON.stringify(LABELS))throw new Error('Vocabulary class order mismatch; expected the agreed 20-word order');
+      if(modelConfig.sequenceLength!==SEQUENCE_LENGTH||modelConfig.featureDimension!==FEATURE_DIMENSION)throw new Error('Vocabulary input-shape contract mismatch');
       if(!modelConfig.trained||!modelConfig.modelPath){modelReady=false;modelStatus.textContent='Wala pang trained model. Landmark tracking works; sign predictions remain disabled until real FSL data is recorded and validated.';return}
       if(!window.tf)throw new Error('TensorFlow.js did not load');await window.tf.ready();model=await window.tf.loadLayersModel(modelConfig.modelPath);
       const input=model.inputs?.[0]?.shape||[],output=model.outputs?.[0]?.shape||[];
