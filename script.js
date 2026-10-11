@@ -63,21 +63,7 @@
     const hands=Number(!!left.length)+Number(!!right.length);trackingBadge.textContent=pose.length?'BODY + FACE · '+hands+' HAND'+(hands===1?'':'S'):'TRACKING: SEARCHING';trackingBadge.classList.toggle('detected',!!pose.length);guide?.classList.toggle('is-hidden',!!pose.length);
   }
 
-  function makeFeatures(r){const pose=r.poseLandmarks||[],face=r.faceLandmarks||[],left=r.leftHandLandmarks||[],right=r.rightHandLandmarks||[];
-    if(pose.length<33||![11,12,23,24].every(i=>visible(pose[i])&&(pose[i].visibility??1)>=.25))return null;
-    const width=video.videoWidth||1280,height=video.videoHeight||720;
-    const shoulder={x:(pose[11].x+pose[12].x)/2,y:(pose[11].y+pose[12].y)/2},hip={x:(pose[23].x+pose[24].x)/2,y:(pose[23].y+pose[24].y)/2};
-    const anchorX=(shoulder.x+hip.x)*.5*width,anchorY=(shoulder.y+hip.y)*.5*height,scale=Math.max(1,Math.hypot((hip.x-shoulder.x)*width,(hip.y-shoulder.y)*height));
-    const norm=p=>visible(p)?[(p.x*width-anchorX)/scale,(p.y*height-anchorY)/scale,((p.z||0)*width)/scale]:[0,0,0];const v=[];
-    // Pose (132): normalized xyz + visibility.
-    for(let i=0;i<33;i++){const p=pose[i],n=norm(p);v.push(...n,clamp(p?.visibility??0,0,1))}
-    // Each hand (126): body-relative xyz plus wrist-relative, palm-scaled xyz.
-    for(const hand of [left,right]){const wrist=hand?.[0],palm=hand?.length>17?Math.max(1,Math.hypot((hand[5].x-hand[17].x)*width,(hand[5].y-hand[17].y)*height)):1;
-      for(let i=0;i<21;i++){const p=hand?.[i],g=norm(p),local=p&&wrist?[(p.x-wrist.x)*width/palm,(p.y-wrist.y)*height/palm,((p.z||0)-(wrist.z||0))*width/palm]:[0,0,0];v.push(...g,...local)}}
-    // Face (72): representative mouth/eye/brow landmarks in body-relative coordinates.
-    for(const i of FACE_IDS)v.push(...norm(face[i]));
-    while(v.length<FEATURE_DIMENSION)v.push(0);return v.slice(0,FEATURE_DIMENSION);
-  }
+  function makeFeatures(r){return window.SignARFeatureExtractor?.extract(r,video.videoWidth||1280,video.videoHeight||720)||null}
   function measureMotion(v){if(!v||!previousFeatures)return 0;let sum=0;for(let i=0;i<384;i++)sum+=Math.abs(v[i]-previousFeatures[i]);return sum/384}
 
   async function loadModel(){if(modelLoadPromise)return modelLoadPromise;modelLoadPromise=(async()=>{
