@@ -8,9 +8,15 @@
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function extract(results,width=1280,height=720){
     const pose=results.poseLandmarks||[],face=results.faceLandmarks||[],left=results.leftHandLandmarks||[],right=results.rightHandLandmarks||[];
-    if(pose.length<33||![11,12,23,24].every(i=>visible(pose[i])&&(pose[i].visibility??1)>=.25))return null;
+    // Hip landmarks may be outside a head-to-waist sign clip. Reliable shoulders are mandatory;
+    // when hips are uncertain, estimate a stable torso anchor rather than rejecting every frame.
+    if(pose.length<33||![11,12].every(i=>visible(pose[i])&&(pose[i].visibility??1)>=.25))return null;
     const shoulder={x:(pose[11].x+pose[12].x)/2,y:(pose[11].y+pose[12].y)/2};
-    const hip={x:(pose[23].x+pose[24].x)/2,y:(pose[23].y+pose[24].y)/2};
+    const hipsReliable=[23,24].every(i=>visible(pose[i])&&(pose[i].visibility??1)>=.25);
+    const shoulderWidthPx=Math.max(1,Math.hypot((pose[11].x-pose[12].x)*width,(pose[11].y-pose[12].y)*height));
+    const hip=hipsReliable
+      ? {x:(pose[23].x+pose[24].x)/2,y:(pose[23].y+pose[24].y)/2}
+      : {x:shoulder.x,y:shoulder.y+(shoulderWidthPx*1.35)/height};
     const anchorX=(shoulder.x+hip.x)*.5*width,anchorY=(shoulder.y+hip.y)*.5*height;
     const scale=Math.max(1,Math.hypot((hip.x-shoulder.x)*width,(hip.y-shoulder.y)*height));
     const norm=p=>visible(p)?[(p.x*width-anchorX)/scale,(p.y*height-anchorY)/scale,((p.z||0)*width)/scale]:[0,0,0];
