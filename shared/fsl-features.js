@@ -8,7 +8,10 @@
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   function extract(results,width=1280,height=720){
     const pose=results.poseLandmarks||[],face=results.faceLandmarks||[],left=results.leftHandLandmarks||[],right=results.rightHandLandmarks||[];
-    if(pose.length<33||![11,12,23,24].every(i=>visible(pose[i])&&(pose[i].visibility??1)>=.25))return null;
+    // Sign clips are often framed from the head to the waist, so hip visibility must not be a hard gate.
+    // Keep the same feature normalization: low-confidence hip estimates still carry visibility values
+    // in the vector, allowing the temporal model to learn when that part of the pose is uncertain.
+    if(pose.length<33||![11,12].every(i=>visible(pose[i])&&(pose[i].visibility??1)>=.25))return null;
     const shoulder={x:(pose[11].x+pose[12].x)/2,y:(pose[11].y+pose[12].y)/2};
     const hip={x:(pose[23].x+pose[24].x)/2,y:(pose[23].y+pose[24].y)/2};
     const anchorX=(shoulder.x+hip.x)*.5*width,anchorY=(shoulder.y+hip.y)*.5*height;
